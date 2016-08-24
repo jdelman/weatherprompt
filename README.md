@@ -1,4 +1,5 @@
-# 🌞 weatherprompt: emoji weather in your prompt ☔
+# 🌞 weatherprompt ☔
+## emoji weather (and moon phases!) in your prompt 
 
 Uses [ipinfo](http://ipinfo.io/json) to get your ZIP code, which is then passed to the [Wunderground API](https://api.wunderground.com/api). (You'll need a Wunderground API key - don't worry, it's free.)
 
@@ -22,7 +23,7 @@ Originally I wrote this in Python, but the overhead of loading Python and the im
 
 Throw it in your prompt:
 
-`export PS1="$(wp -k [key])  \u@\h\w $ "`
+`export PS1="$(wp -m -k [key])  \u@\h\w $ "`
 
 
 
@@ -33,6 +34,7 @@ Throw it in your prompt:
   -f  Force lookup (don't use cached data)
   -k string
       API key for api.wunderground.com
+  -m  Include the phase of the moon (at night)
   -w int
       Number of minutes to wait before checking (default 10)
   -z string

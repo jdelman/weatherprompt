@@ -9,9 +9,29 @@ import (
   "os"
   "strings"
   "time"
+  "strconv"
 )
 
 // structs for unpacking JSON
+type Astronomy struct {
+  Moon_phase           Moon
+  Sun_phase            Sun
+}
+
+type Moon struct {
+  PhaseofMoon          string
+}
+
+type Sun struct {
+  Sunrise              SmallTime
+  Sunset               SmallTime
+}
+
+type SmallTime struct {
+  Hour                 string
+  Minute               string
+}
+
 type Conditions struct {
   Current_observation Current
 }
@@ -26,24 +46,27 @@ type CachedConditions struct {
   Station              string  `json:"station"`
   Condition            string  `json:"condition"`
   Emoji                string  `json:"emoji"`
+  MoonEmoji            string  `json:"moon_emoji"`
 }
 
 type Zipcode struct {
   Postal               string
 }
 
+// command line flags
 var (
   debug                bool
   api_key              string
   wait_minutes         int64
   user_zip             string
   force_check          bool
+  show_moon            bool
 )
 
 const WAIT_MINUTES_DEFAULT = 10
 
 // declare EMOJI map.
-func GetEmoji() map[string]string {
+func GetWeatherEmoji() map[string]string {
   EMOJI := map[string]string {
     "Drizzle": "🌦",
     "Rain": "☔",
@@ -102,6 +125,20 @@ func GetEmoji() map[string]string {
   return EMOJI
 }
 
+func GetMoonEmoji() map[string]string {
+  MOON_EMOJI := map[string]string {
+    "New": "🌚",
+    "Waxing Crescent": "🌙",
+    "First Quarter": "🌛",
+    "Waxing Gibbous": "🌔",
+    "Full": "🌝",
+    "Waning Gibbous": "🌖",
+    "Last Quarter": "🌜",
+    "Waning Crescent": "🌘",
+  }
+  return MOON_EMOJI
+}
+
 // Fetch does URL processing
 func Fetch(url string) ([]byte, error) {
   res, err := http.Get(url)
@@ -128,12 +165,13 @@ func GetCachedConditions() CachedConditions {
 }
 
 
-func SaveCurrentConditions(station string, condition string, emoji string) {
+func SaveCurrentConditions(station string, condition string, emoji string, moonemoji string) {
   var cond CachedConditions
 
   cond.Station = station
   cond.Condition = condition
   cond.Emoji = emoji
+  cond.MoonEmoji = moonemoji
   cond.Last = time.Now().Unix()
 
   b, err := json.Marshal(cond)
@@ -144,8 +182,18 @@ func SaveCurrentConditions(station string, condition string, emoji string) {
 }
 
 
+func MapMoonPhaseToEmoji(phase string) string {
+  for phs, emoji := range GetMoonEmoji() {
+    if strings.HasPrefix(phase, phs) {
+      return emoji
+    }
+  }
+  return ""
+}
+
+
 func MapConditionToEmoji(condition string) string {
-  for cond, emoji := range GetEmoji() {
+  for cond, emoji := range GetWeatherEmoji() {
     if strings.HasSuffix(condition, cond) {
       return emoji
     }
@@ -184,12 +232,12 @@ func DebugPrint(a ...interface{}) {
 }
 
 
-func WeatherUrlForZip(zip string) string {
+func WeatherUrlForZip(section string, zip string) string {
   const stem = "http://api.wunderground.com/api/"
-  const prezip = "/conditions/q/zmw:"
+  const prezip = "/q/zmw:"
   const postzip = ".1.99999.json"
 
-  fullUrl := stem + api_key + prezip + zip + postzip
+  fullUrl := stem + api_key + "/" + section + prezip + zip + postzip
   DebugPrint("using weather url:", fullUrl)
 
   return fullUrl
@@ -209,7 +257,21 @@ func ParseCommandLine() {
   flag.StringVar(&api_key, "k", "", "API key for api.wunderground.com")
   flag.StringVar(&user_zip, "z", "", "Force zip code (skip ipinfo.io lookup)")
   flag.BoolVar(&force_check, "f", false, "Force lookup (don't use cached data)")
+  flag.BoolVar(&show_moon, "m", false, "Include the phase of the moon (at night)")
   flag.Parse()
+}
+
+
+func WithHourAndMinute(t time.Time, smalltime SmallTime) time.Time {
+  hour, hErr := strconv.Atoi(smalltime.Hour)
+  CheckError(hErr, "hour conversion to string")
+
+  minute, mErr := strconv.Atoi(smalltime.Minute)
+  CheckError(mErr, "minute conversion to string")
+
+  return time.Date(t.Year(), t.Month(), t.Day(),
+                   hour, minute,
+                   t.Second(), t.Nanosecond(), t.Location())
 }
 
 
@@ -224,7 +286,11 @@ func main() {
   if !force_check && cachedcond.Last != 0 && !TimeToCheckYet(cachedcond.Last) {
     // return cached; we're done!
     DebugPrint("using cached response")
-    fmt.Println(cachedcond.Emoji)
+    out := cachedcond.Emoji;
+    if show_moon {
+      out += " " + cachedcond.MoonEmoji
+    }
+    fmt.Println(out)
     os.Exit(0)
   }
 
@@ -235,7 +301,8 @@ func main() {
     DebugPrint("using forced zip:", user_zip)
   }
 
-  url := WeatherUrlForZip(user_zip)
+  url := WeatherUrlForZip("conditions", user_zip)
+  DebugPrint(url)
   b, err := Fetch(url)
   CheckError(err, "Fetch Weather")
   DebugPrint("got conditions:", string(b[:]))
@@ -244,12 +311,40 @@ func main() {
   err = json.Unmarshal(b, &cond)
   CheckError(err, "Unmarshall conditions JSON")
 
+  moonemoji := ""
+  if show_moon {
+    url = WeatherUrlForZip("astronomy", user_zip)
+    b, err = Fetch(url)
+    CheckError(err, "Fetch Astronomy")
+    DebugPrint("astronomy url:", url, "got astronomy:", string(b[:]))
+
+    var astronomy Astronomy
+    err = json.Unmarshal(b, &astronomy)
+    CheckError(err, "Unmarshall astronomy JSON")
+    DebugPrint("astronomy", astronomy)
+
+    // use sunrise/sunset to decide if we should really show the moon
+    DebugPrint("sunrise", astronomy.Sun_phase.Sunrise, "sunset", astronomy.Sun_phase.Sunset)
+    // sunrise := WithHourAndMinute(time.Now(), astronomy.Sun_phase.Sunrise)
+    sunset := WithHourAndMinute(time.Now(), astronomy.Sun_phase.Sunset)
+    // DebugPrint("sunrise", sunrise, "sunset", sunset)
+
+    if time.Now().After(sunset) {
+      DebugPrint("it's night")
+      moonemoji = MapMoonPhaseToEmoji(astronomy.Moon_phase.PhaseofMoon)
+    } else {
+      moonemoji = ""
+    }
+  }
+
   station := cond.Current_observation.Station_id
   condition := cond.Current_observation.Weather
   emoji := MapConditionToEmoji(cond.Current_observation.Weather)
 
   // save conditions
-  SaveCurrentConditions(station, condition, emoji)
+  SaveCurrentConditions(station, condition, emoji, moonemoji)
 
-  fmt.Println(emoji)
+  out := emoji + " " + moonemoji
+
+  fmt.Println(out)
 }
