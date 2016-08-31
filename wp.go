@@ -39,6 +39,7 @@ type Conditions struct {
 type Current struct {
   Station_id           string
   Weather              string
+  Temp_f               float64
 }
 
 type CachedConditions struct {
@@ -47,6 +48,7 @@ type CachedConditions struct {
   Condition            string  `json:"condition"`
   Emoji                string  `json:"emoji"`
   MoonEmoji            string  `json:"moon_emoji"`
+  Temp                 string  `json:"temp"`
 }
 
 type Zipcode struct {
@@ -61,6 +63,7 @@ var (
   user_zip             string
   force_check          bool
   show_moon            bool
+  show_temp            bool
 )
 
 const WAIT_MINUTES_DEFAULT = 10
@@ -165,13 +168,14 @@ func GetCachedConditions() CachedConditions {
 }
 
 
-func SaveCurrentConditions(station string, condition string, emoji string, moonemoji string) {
+func SaveCurrentConditions(station string, condition string, emoji string, moonemoji string, temp string) {
   var cond CachedConditions
 
   cond.Station = station
   cond.Condition = condition
   cond.Emoji = emoji
   cond.MoonEmoji = moonemoji
+  cond.Temp = temp
   cond.Last = time.Now().Unix()
 
   b, err := json.Marshal(cond)
@@ -258,6 +262,7 @@ func ParseCommandLine() {
   flag.StringVar(&user_zip, "z", "", "Force zip code (skip ipinfo.io lookup)")
   flag.BoolVar(&force_check, "f", false, "Force lookup (don't use cached data)")
   flag.BoolVar(&show_moon, "m", false, "Include the phase of the moon (at night)")
+  flag.BoolVar(&show_temp, "t", false, "Show the temperature in Fahrenheit")
   flag.Parse()
 }
 
@@ -289,6 +294,9 @@ func main() {
     out := cachedcond.Emoji;
     if show_moon {
       out += " " + cachedcond.MoonEmoji
+    }
+    if show_temp {
+      out += "  " + cachedcond.Temp + "°"
     }
     fmt.Println(out)
     os.Exit(0)
@@ -339,12 +347,19 @@ func main() {
 
   station := cond.Current_observation.Station_id
   condition := cond.Current_observation.Weather
+  temp := strconv.FormatFloat(cond.Current_observation.Temp_f, 'f', 0, 64);
   emoji := MapConditionToEmoji(cond.Current_observation.Weather)
 
   // save conditions
-  SaveCurrentConditions(station, condition, emoji, moonemoji)
+  SaveCurrentConditions(station, condition, emoji, moonemoji, temp)
 
-  out := emoji + " " + moonemoji
+  out := emoji
+  if show_moon {
+    out += " " + moonemoji
+  }
+  if show_temp {
+    out += "  " + temp + "°"
+  }
 
   fmt.Println(out)
 }
