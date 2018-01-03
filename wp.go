@@ -151,7 +151,7 @@ func Fetch(url string) ([]byte, error) {
   res, err := client.Get(url)
   CheckError(err, "fetch")
   if res.StatusCode != 200 {
-    fmt.Fprintf(os.Stderr, "Bad HTTP Status: %d\n", res.StatusCode)
+    DebugPrint(os.Stderr, "Bad HTTP Status: %d\n", res.StatusCode)
     return nil, err
   }
   b, err := ioutil.ReadAll(res.Body)
