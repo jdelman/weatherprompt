@@ -227,6 +227,11 @@ func GetZip() string {
 // CheckError exits on error with a message
 func CheckError(err error, tag string) {
   if err != nil {
+    if tag == "fetch" || tag == "Unmarshall conditions JSON" {
+      // we don't have internet
+      fmt.Println("⛔ ");
+      os.Exit(1);
+    }
     fmt.Fprintf(os.Stderr, "%s: Fatal error\n%v\n", tag, err)
     os.Exit(1)
   }
