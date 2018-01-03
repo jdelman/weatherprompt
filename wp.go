@@ -144,7 +144,11 @@ func GetMoonEmoji() map[string]string {
 
 // Fetch does URL processing
 func Fetch(url string) ([]byte, error) {
-  res, err := http.Get(url)
+  timeout := time.Duration(3 * time.Second)
+  client := http.Client{
+    Timeout: timeout,
+  }
+  res, err := client.Get(url)
   CheckError(err, "fetch")
   if res.StatusCode != 200 {
     fmt.Fprintf(os.Stderr, "Bad HTTP Status: %d\n", res.StatusCode)
