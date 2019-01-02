@@ -367,7 +367,7 @@ func main() {
     out += " " + moonemoji
   }
   if show_temp {
-    out += "  " + temp + "°"
+    out += " " + temp + "°"
   }
 
   fmt.Println(out)
